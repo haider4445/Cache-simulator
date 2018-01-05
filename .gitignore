@@ -1,52 +1,257 @@
-# Prerequisites
-*.d
+#include "cachelab.h"
+#include <math.h>
+#include <getopt.h>
+#include <stdlib.h>
+#include <stdio.h>
 
-# Object files
-*.o
-*.ko
-*.obj
-*.elf
+// making structure of cache line in which include valid bit, use rate and tag bit. we dont need block for simulator.
+typedef struct
+{
+    int use_of_line;
+    int valid_bit_of_line;
+    unsigned long long int tag_bit_of_line;
+} lines_of_cache;
 
-# Linker output
-*.ilk
-*.map
-*.exp
+// making sets which consist of associative lines
+typedef struct
+{
+    lines_of_cache* associative_lines;
 
-# Precompiled Headers
-*.gch
-*.pch
+} sets_of_cache;
 
-# Libraries
-*.lib
-*.a
-*.la
-*.lo
+//completing cache by making pointer. These will then be created on heap for user input.
+typedef struct
+{
+    sets_of_cache* sets_rows;
+} total_cache;
 
-# Shared objects (inc. Windows DLLs)
-*.dll
-*.so
-*.so.*
-*.dylib
+// making cache by malloc(built-in function) in C programming.
+//first sets then lines then initializing them with zero through loop
+total_cache new_in_heap(int* s, int no_l)
+{
+	long long int S_no;
+	int actual_s = (*s);
 
-# Executables
-*.exe
-*.out
-*.app
-*.i*86
-*.x86_64
-*.hex
+    S_no = pow(2,actual_s);
+    long long mal_size = S_no*sizeof(sets_of_cache);
+    int  mal_size_l = no_l*sizeof(lines_of_cache);
 
-# Debug files
-*.dSYM/
-*.su
-*.idb
-*.pdb
+    total_cache new_total_cache;
 
-# Kernel Module Compile Results
-*.mod*
-*.cmd
-.tmp_versions/
-modules.order
-Module.symvers
-Mkfile.old
-dkms.conf
+    new_total_cache.sets_rows = (sets_of_cache*)malloc(mal_size);
+
+    sets_of_cache new_set;
+
+    lines_of_cache c_l;
+
+    int i; int k; int n;
+    
+	for ( i = 0 ; i < S_no ; i++)
+    {
+         new_set.associative_lines =  (lines_of_cache*)malloc(mal_size_l);
+         new_total_cache.sets_rows[i] = new_set;
+    }
+
+	for (k = 0 ; k < S_no ; k++)
+	{
+	for ( n = 0 ; n < no_l ; n++)
+         {
+             c_l.valid_bit_of_line = 0;
+             c_l.tag_bit_of_line = 0;
+             c_l.use_of_line = 0;
+          new_total_cache.sets_rows[k].associative_lines[n] = c_l;
+         }
+	}
+    return new_total_cache;
+}
+
+
+
+void cacheWorking (total_cache new_cache,unsigned long long int bits,int* no_of_hits, int* no_of_misses,
+int* no_of_evictions,int* E,int* b,int* s)
+{
+  
+       int no_miss = 0;
+        int space = 0;
+        int memory = 64;
+        int add = (*b) + (*s);
+
+        int TagBitsSize = memory - add;
+        int right_shift = TagBitsSize + (*b); 
+
+        unsigned long long int ADDR_set = (bits << TagBitsSize) >> right_shift; // address of set
+
+        sets_of_cache given_set  = new_cache.sets_rows[ADDR_set];
+
+        unsigned long long int addr_tag = bits >> add; //tag in address
+
+
+    int len = (*E);
+    int i;
+    for ( i = 0 ; i < len ; i++)
+    {
+        lines_of_cache check_line = given_set.associative_lines[i];
+
+        if (check_line.valid_bit_of_line == 0)
+        {
+         space = 1;  //checking space, if zero valid bit then there is space
+        }
+        else 
+        {
+		 if (check_line.tag_bit_of_line == addr_tag )
+            {
+                (*no_of_hits) = *(no_of_hits) + 1; //increasing hit
+                check_line.use_of_line++; //line is used
+                no_miss = 1; //no miss, hit here
+                given_set.associative_lines[i] = check_line; 
+            }
+        }
+    }
+
+	if (no_miss == 1)
+	{
+	return; //hit and return
+	}
+	
+   	else
+    	{
+        *(no_of_misses) = *(no_of_misses) + 1; //no hit the increment miss
+    	}
+    
+	
+     int evict_no = 0;
+
+     int minimum = 100000;
+     int maximum = -100000;
+
+     lines_of_cache testLine;
+
+     int v;
+      for ( v = 0 ; v < len; v++)
+      {
+          testLine = given_set.associative_lines[v];
+
+
+      if (testLine.use_of_line > maximum)
+      {
+          maximum = testLine.use_of_line; //line which is maximum
+      }
+	 
+	if ( testLine.use_of_line < minimum)
+      {
+            evict_no = v;
+            minimum = testLine.use_of_line; //line which has minimum occurence
+      }	
+		//evict_no is the index of evicted line
+      }
+  
+
+   if (space != 0)
+   {
+       int p; //if there is a space then find the space by zero valid bit and add there the tag and valid bit.
+       for ( p = 0 ; p < len ; p++)
+    {
+        lines_of_cache check_line = given_set.associative_lines[p];
+
+        if (check_line.valid_bit_of_line == 0)
+        {
+            given_set.associative_lines[p].use_of_line = 1 + maximum;
+            given_set.associative_lines[p].tag_bit_of_line = addr_tag;
+            given_set.associative_lines[p].valid_bit_of_line = 1;
+            break;
+        }
+    }
+
+   }
+	else //increment eviction if there is no space
+   {
+       given_set.associative_lines[evict_no].use_of_line = 1 + maximum;
+       given_set.associative_lines[evict_no].tag_bit_of_line = addr_tag;
+       given_set.associative_lines[evict_no].valid_bit_of_line = 1;
+       *(no_of_evictions) = *(no_of_evictions) + 1;
+   }
+
+   return;
+}
+
+
+int main(int argc, char **argv)
+{
+    int no_of_misses = 0;
+    int no_of_hits = 0;
+    int no_of_evictions = 0;
+
+    int E = 0;
+    int s = 0;
+    int b = 0;
+
+    total_cache NewCache;
+
+    unsigned long long int loca;
+
+    FILE* in_file;
+
+    char mem; 
+
+    char* incom;
+    int length;
+    char opt;
+	
+    while((opt=getopt(argc,argv,"E:s:t:b:")) != -1)
+   {
+        if (opt == 'E')
+	{
+            E = atoi(optarg);
+      	}
+        
+        else if (opt == 's')
+	{
+            s = atoi(optarg);
+      	}
+            
+	else if (opt == 't')
+	{
+		incom = optarg;
+	}      
+	
+	  else if (opt == 'b')
+	{
+            b = atoi(optarg);
+      	}
+    }
+
+    NewCache = new_in_heap(&s,E); 
+
+    in_file = fopen(incom,"r"); // open file and then read data
+// for M we take 2 calls of function as mentioned in handout
+// for I: havent considered the function call.
+// for S and L, call function.
+
+   	if (in_file != NULL) 
+	{
+	        while (fscanf(in_file, " %c %llx,%d",&mem,&loca,&length) == 3) 
+		{
+         	if (mem == 'M')
+		{
+                    	cacheWorking(NewCache,loca,&no_of_hits,&no_of_misses,&no_of_evictions,&E,&b,&s);
+			cacheWorking(NewCache,loca,&no_of_hits,&no_of_misses,&no_of_evictions,&E,&b,&s);
+		}
+                
+                else if (mem == 'S')
+			{
+                    	cacheWorking(NewCache,loca,&no_of_hits,&no_of_misses,&no_of_evictions,&E,&b,&s);
+			}	
+            	else if(mem == 'L')
+			{
+                    	cacheWorking(NewCache,loca,&no_of_hits,&no_of_misses,&no_of_evictions,&E,&b,&s);
+               		}
+        	}
+    	}
+
+    fclose(in_file); // close file
+    printSummary(no_of_hits,no_of_misses,no_of_evictions);
+
+
+    return 0;
+}
+
